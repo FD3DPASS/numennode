@@ -1,55 +1,66 @@
+Copy-Item .github\workflows\windows-node.yml .github\workflows\windows-node.yml.bak
+
+@'
 name: Windows node build (experimental)
+
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - 'node/**'
-      - 'runtime/**'
-      - 'consensus/**'
-      - 'pallets/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/windows-node.yml'
+
 permissions:
   contents: read
+
 jobs:
   build-windows:
-    runs-on: windows-2022
+    runs-on: ubuntu-22.04
     timeout-minutes: 360
+
     env:
-      CARGO_INCREMENTAL: '0'
-      CMAKE_GENERATOR: 'Visual Studio 17 2022'
+      CARGO_INCREMENTAL: "0"
+      CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
+      CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+      PKG_CONFIG_ALLOW_CROSS: "1"
+
     steps:
       - uses: actions/checkout@v4
-      - name: Install LLVM and protoc
-        shell: pwsh
+
+      - name: Install build dependencies
         run: |
-          choco install llvm protoc -y --no-progress
-          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          sudo apt-get update
+          sudo apt-get install -y \
+            mingw-w64 \
+            clang \
+            libclang-dev \
+            llvm \
+            protobuf-compiler \
+            cmake \
+            pkg-config
+
       - name: Configure Rust
-        shell: pwsh
         run: |
-          rustup default stable-x86_64-pc-windows-msvc
-          rustup component add rust-src
+          rustup toolchain install stable
+          rustup default stable
+          rustup target add x86_64-pc-windows-gnu
           rustup target add wasm32-unknown-unknown
-          rustc --version
-          cargo --version
-      - name: Compile native Windows node
-        shell: pwsh
-        run: cargo build --release --locked -p numen
-      - name: Smoke test
-        shell: pwsh
-        run: .\target\release\numen.exe --version
-      - name: Package
-        shell: pwsh
+          rustup component add rust-src
+
+      - name: Build Windows executable
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target\release\numen.exe dist\
-          Copy-Item mainnet-raw.json dist\
-          Copy-Item windows\start-numen.ps1 dist\
-          Compress-Archive -Path dist\* -DestinationPath numen-windows-x64.zip -Force
+          cargo build --release --locked \
+            --target x86_64-pc-windows-gnu \
+            -p numen
+
+      - name: Package Windows node
+        run: |
+          mkdir -p dist
+          cp target/x86_64-pc-windows-gnu/release/numen.exe dist/
+          cp mainnet-raw.json dist/
+          cp windows/start-numen.ps1 dist/
+          cd dist
+          zip -r ../numen-windows-x64.zip .
+
       - uses: actions/upload-artifact@v4
         with:
           name: numen-windows-x64
           path: numen-windows-x64.zip
+'@ | Set-Content .github\workflows\windows-node.yml -Encoding UTF8
