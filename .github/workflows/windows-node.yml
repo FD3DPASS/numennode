@@ -33,6 +33,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             mingw-w64 \
+            g++-mingw-w64-x86-64-posix \
+            gcc-mingw-w64-x86-64-posix \
             clang \
             libclang-dev \
             llvm \
@@ -41,6 +43,19 @@ jobs:
             pkg-config \
             python3 \
             zip
+
+      - name: Configure MinGW POSIX compiler
+        run: |
+          sudo update-alternatives --set \
+            x86_64-w64-mingw32-gcc \
+            /usr/bin/x86_64-w64-mingw32-gcc-posix
+
+          sudo update-alternatives --set \
+            x86_64-w64-mingw32-g++ \
+            /usr/bin/x86_64-w64-mingw32-g++-posix
+
+          x86_64-w64-mingw32-gcc --version
+          x86_64-w64-mingw32-g++ --version
 
       - name: Configure Rust
         run: |
@@ -135,7 +150,6 @@ jobs:
           fi
 
           cd dist
-
           zip -r ../numen-windows-x64.zip .
 
       - name: Upload Windows package
