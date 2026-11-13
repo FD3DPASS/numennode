@@ -18,10 +18,11 @@ jobs:
 
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
-      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: clang
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: "-C link-arg=--target=x86_64-w64-windows-gnu -C link-arg=-fuse-ld=lld"
 
       PKG_CONFIG_ALLOW_CROSS: "1"
-
       CXXFLAGS_x86_64_pc_windows_gnu: "-include mutex -include thread"
 
     steps:
@@ -36,6 +37,7 @@ jobs:
             g++-mingw-w64-x86-64-posix \
             gcc-mingw-w64-x86-64-posix \
             clang \
+            lld \
             libclang-dev \
             llvm \
             protobuf-compiler \
@@ -79,10 +81,7 @@ jobs:
           from pathlib import Path
 
           root = Path.home() / ".cargo" / "registry" / "src"
-
-          files = list(
-              root.glob("*/crunchy-0.2.3/src/lib.rs")
-          )
+          files = list(root.glob("*/crunchy-0.2.3/src/lib.rs"))
 
           if not files:
               raise SystemExit(
@@ -100,10 +99,7 @@ jobs:
                       f"ERROR: Expected path not found: {path}"
                   )
 
-              path.write_text(
-                  source.replace(old, new)
-              )
-
+              path.write_text(source.replace(old, new))
               print(f"Patched: {path}")
           PY
 
@@ -120,13 +116,40 @@ jobs:
 
           echo "Windows C++ compiler test passed"
 
+      - name: Verify LLVM Windows linker
+        run: |
+          clang --version
+          ld.lld --version
+
+          printf 'int main(void) { return 0; }\n' > linker-test.c
+
+          clang \
+            --target=x86_64-w64-windows-gnu \
+            -fuse-ld=lld \
+            linker-test.c \
+            -o linker-test.exe
+
+          test -f linker-test.exe
+          echo "LLVM Windows linker test passed"
+
       - name: Build Windows executable
         run: |
+          set -o pipefail
+
           cargo build \
             --release \
             --locked \
             --target x86_64-pc-windows-gnu \
-            -p numen
+            -p numen \
+            2>&1 | tee windows-build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: numen-windows-build-log
+          path: windows-build.log
+          if-no-files-found: ignore
 
       - name: Package Windows node
         run: |
