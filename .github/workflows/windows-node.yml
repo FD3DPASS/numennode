@@ -21,14 +21,22 @@ jobs:
       PKG_CONFIG_ALLOW_CROSS: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            mingw-w64 clang libclang-dev llvm \
-            protobuf-compiler cmake pkg-config
+            mingw-w64 \
+            clang \
+            libclang-dev \
+            llvm \
+            protobuf-compiler \
+            cmake \
+            pkg-config \
+            python3 \
+            zip
 
       - name: Configure Rust
         run: |
@@ -38,22 +46,83 @@ jobs:
           rustup target add wasm32-unknown-unknown
           rustup component add rust-src
 
+          rustc --version
+          cargo --version
+
+      - name: Download Rust dependencies
+        run: |
+          cargo fetch --locked \
+            --target x86_64-pc-windows-gnu
+
+      - name: Fix crunchy cross-compilation path
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path.home() / ".cargo" / "registry" / "src"
+
+          files = list(
+              root.glob("*/crunchy-0.2.3/src/lib.rs")
+          )
+
+          if not files:
+              raise SystemExit(
+                  "ERROR: crunchy v0.2.3 source not found"
+              )
+
+          for path in files:
+              source = path.read_text()
+
+              old = r'\\lib.rs'
+              new = '/lib.rs'
+
+              if old not in source:
+                  raise SystemExit(
+                      f"ERROR: Expected path not found: {path}"
+                  )
+
+              path.write_text(
+                  source.replace(old, new)
+              )
+
+              print(f"Patched: {path}")
+          PY
+
       - name: Build Windows executable
         run: |
-          cargo build --release --locked \
+          cargo build \
+            --release \
+            --locked \
             --target x86_64-pc-windows-gnu \
             -p numen
 
-      - name: Package
+      - name: Package Windows node
         run: |
           mkdir -p dist
-          cp target/x86_64-pc-windows-gnu/release/numen.exe dist/
-          cp mainnet-raw.json dist/
-          cp windows/start-numen.ps1 dist/
+
+          EXE="target/x86_64-pc-windows-gnu/release/numen.exe"
+
+          if [ ! -f "$EXE" ]; then
+            echo "ERROR: numen.exe not found"
+            exit 1
+          fi
+
+          cp "$EXE" dist/
+
+          if [ -f mainnet-raw.json ]; then
+            cp mainnet-raw.json dist/
+          fi
+
+          if [ -f windows/start-numen.ps1 ]; then
+            cp windows/start-numen.ps1 dist/
+          fi
+
           cd dist
           zip -r ../numen-windows-x64.zip .
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
         with:
           name: numen-windows-x64
           path: numen-windows-x64.zip
+          if-no-files-found: error
