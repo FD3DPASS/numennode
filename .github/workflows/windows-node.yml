@@ -19,8 +19,8 @@ jobs:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
 
-      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: clang
-      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: "-C link-arg=--target=x86_64-w64-windows-gnu -C link-arg=-fuse-ld=lld"
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
 
       PKG_CONFIG_ALLOW_CROSS: "1"
       CXXFLAGS_x86_64_pc_windows_gnu: "-include mutex -include thread"
@@ -118,18 +118,20 @@ jobs:
 
       - name: Verify LLVM Windows linker
         run: |
-          clang --version
+          x86_64-w64-mingw32-gcc --version
           ld.lld --version
 
           printf 'int main(void) { return 0; }\n' > linker-test.c
 
-          clang \
-            --target=x86_64-w64-windows-gnu \
+          x86_64-w64-mingw32-gcc \
             -fuse-ld=lld \
             linker-test.c \
             -o linker-test.exe
 
           test -f linker-test.exe
+
+          file linker-test.exe
+
           echo "LLVM Windows linker test passed"
 
       - name: Build Windows executable
