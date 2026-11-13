@@ -60,4 +60,3 @@ jobs:
         with:
           name: numen-windows-x64
           path: numen-windows-x64.zip
-'@ | Set-Content .github\workflows\windows-node.yml -Encoding UTF8
