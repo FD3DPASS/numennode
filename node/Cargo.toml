@@ -1,0 +1,145 @@
+[package]
+name = "numen"
+description = "Numen node built on Polkadot SDK."
+version = "1.1.0"
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish = false
+
+build = "build.rs"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+clap = { features = ["derive"], workspace = true }
+codec.workspace = true
+ethereum.workspace = true
+ethereum-types.workspace = true
+evm-core.workspace = true
+fc-rpc-core.workspace = true
+frame-benchmarking-cli.default-features = true
+frame-benchmarking-cli.workspace = true
+frame-metadata-hash-extension.default-features = true
+frame-metadata-hash-extension.workspace = true
+frame-system.default-features = true
+frame-system.workspace = true
+futures = { features = ["thread-pool"], workspace = true }
+jsonrpsee = { features = ["http-client", "macros", "server", "ws-client"], workspace = true }
+tokio = { features = ["rt", "time"], workspace = true }
+log.workspace = true
+serde = { workspace = true, default-features = true }
+pallet-transaction-payment-rpc.default-features = true
+pallet-transaction-payment-rpc.workspace = true
+pallet-transaction-payment.default-features = true
+pallet-transaction-payment.workspace = true
+pallet-revive.default-features = true
+pallet-revive.workspace = true
+rlp.workspace = true
+sc-basic-authorship.default-features = true
+sc-basic-authorship.workspace = true
+sc-cli.default-features = true
+sc-cli.workspace = true
+sc-client-api.default-features = true
+sc-client-api.workspace = true
+sc-consensus.default-features = true
+sc-consensus.workspace = true
+sc-consensus-grandpa.default-features = true
+sc-consensus-grandpa.workspace = true
+sc-consensus-grandpa-rpc.default-features = true
+sc-consensus-grandpa-rpc.workspace = true
+sc-consensus-pow.default-features = true
+sc-consensus-pow.workspace = true
+sc-executor.default-features = true
+sc-executor.workspace = true
+cumulus-primitives-proof-size-hostfunction.default-features = true
+cumulus-primitives-proof-size-hostfunction.workspace = true
+sc-network.default-features = true
+sc-network.workspace = true
+sc-offchain.default-features = true
+sc-offchain.workspace = true
+sc-rpc.default-features = true
+sc-rpc.workspace = true
+sc-service.default-features = true
+sc-service.workspace = true
+sc-telemetry.default-features = true
+sc-telemetry.workspace = true
+serde_json.default-features = true
+serde_json.workspace = true
+sc-transaction-pool-api.default-features = true
+sc-transaction-pool-api.workspace = true
+sc-transaction-pool.default-features = true
+sc-transaction-pool.workspace = true
+numen-runtime.workspace = true
+sp-api.default-features = true
+sp-api.workspace = true
+sp-block-builder.default-features = true
+sp-block-builder.workspace = true
+sp-blockchain.default-features = true
+sp-blockchain.workspace = true
+sp-consensus-grandpa.default-features = true
+sp-consensus-grandpa.workspace = true
+sp-consensus-pow.default-features = true
+sp-consensus-pow.workspace = true
+sp-core.default-features = true
+sp-core.workspace = true
+sp-crypto-hashing.default-features = true
+sp-crypto-hashing.workspace = true
+sp-externalities.default-features = true
+sp-externalities.workspace = true
+sp-genesis-builder.default-features = true
+sp-genesis-builder.workspace = true
+sp-inherents.default-features = true
+sp-inherents.workspace = true
+sp-io.default-features = true
+sp-io.workspace = true
+sp-keyring.default-features = true
+sp-keyring.workspace = true
+sp-runtime.default-features = true
+sp-runtime.workspace = true
+sp-state-machine.default-features = true
+sp-state-machine.workspace = true
+sp-timestamp.default-features = true
+sp-timestamp.workspace = true
+sp-trie.default-features = true
+sp-trie.workspace = true
+substrate-frame-rpc-system.default-features = true
+substrate-frame-rpc-system.workspace = true
+poscan-pow.workspace = true
+poscan.workspace = true
+
+[dev-dependencies]
+tokio = { features = ["rt", "macros"], workspace = true }
+
+[build-dependencies]
+substrate-build-script-utils.default-features = true
+substrate-build-script-utils.workspace = true
+
+[features]
+default = ["std"]
+std = ["numen-runtime/std"]
+# Bake the metadata hash into the runtime so hardware wallets can verify
+# what they sign. Off by default because it builds the wasm twice.
+metadata-hash = ["numen-runtime/metadata-hash"]
+# Dependencies that are only required if runtime benchmarking should be build.
+runtime-benchmarks = [
+	"frame-benchmarking-cli/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"pallet-transaction-payment/runtime-benchmarks",
+	"sc-service/runtime-benchmarks",
+	"numen-runtime/runtime-benchmarks",
+	"sp-runtime/runtime-benchmarks",
+]
+# Enable features for providing test values.
+zombienet-runtime = ["numen-runtime/zombienet-runtime"]
+# Enable features that allow the runtime to be tried and debugged.
+# Name might be subject to change in the near future.
+try-runtime = [
+	"frame-system/try-runtime",
+	"pallet-transaction-payment/try-runtime",
+	"numen-runtime/try-runtime",
+	"sp-runtime/try-runtime",
+]

@@ -1,0 +1,107 @@
+name: Release node
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches node version
+        id: check
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(grep -m1 '^version' node/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "tag=$tag node/Cargo.toml version=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag '$tag' does not match node/Cargo.toml version '$version'"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/free-disk-space
+      - uses: ./.github/actions/ubuntu-dependencies
+      - name: Run tests
+        run: SKIP_WASM_BUILD=1 cargo test --workspace --locked
+        timeout-minutes: 30
+
+  zombienet:
+    needs: check-version
+    uses: ./.github/workflows/zombienet.yml
+
+  build:
+    needs: [check-version, test, zombienet]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: numen-linux-x86_64
+          - os: macos-latest
+            asset: numen-macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/free-disk-space
+        if: matrix.os == 'ubuntu-latest'
+
+      - name: Rust compilation prerequisites (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: ./.github/actions/ubuntu-dependencies
+
+      - name: Rust compilation prerequisites (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: ./.github/actions/macos-dependencies
+
+      - name: Build node
+        run: cargo build --profile production --locked -p numen --features metadata-hash
+        timeout-minutes: 90
+
+      - name: Build eth-rpc
+        run: bash .maintain/build-eth-rpc.sh target/eth-rpc --profile production
+        timeout-minutes: 90
+
+      - name: Bundle release archive
+        run: |
+          mkdir -p ${{ matrix.asset }}
+          cp target/production/numen target/eth-rpc/bin/eth-rpc ${{ matrix.asset }}/
+          cp mainnet-raw.json ${{ matrix.asset }}/
+          tar -czf ${{ matrix.asset }}.tar.gz ${{ matrix.asset }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}.tar.gz
+          path: ${{ matrix.asset }}.tar.gz
+
+  publish:
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: '*.tar.gz'
+          merge-multiple: true
+
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Numen v${{ needs.check-version.outputs.version }}
+          draft: true
+          prerelease: true
+          generate_release_notes: true
+          files: artifacts/*
+

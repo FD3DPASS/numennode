@@ -1,0 +1,35 @@
+[package]
+name = "poscan-pow"
+description = "Runtime-delegated PoW consensus for the PoScan chain (node algorithm plus runtime verify API)."
+version = "0.1.0"
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+codec = { features = ["derive"], workspace = true }
+pallet-difficulty.workspace = true
+sp-api.workspace = true
+sp-consensus-pow.workspace = true
+sp-core.workspace = true
+
+# std-only dependencies
+sc-consensus-pow = { workspace = true, default-features = true, optional = true }
+sp-blockchain = { workspace = true, default-features = true, optional = true }
+sp-runtime = { workspace = true, default-features = true, optional = true }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"pallet-difficulty/std",
+	"sp-api/std",
+	"sp-consensus-pow/std",
+	"sp-core/std",
+	"sc-consensus-pow",
+	"sp-blockchain",
+	"sp-runtime/std",
+]

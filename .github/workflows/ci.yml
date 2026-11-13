@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  # Saves the caches that PRs restore. PRs can't read each other's.
+  push:
+    branches:
+      - master
+  # GitHub evicts caches unread for 7 days.
+  schedule:
+    - cron: '23 3 * * 1,4'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # A cancelled run saves no cache.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!**/*.json'
+              - '!LICENSE'
+              - '!.maintain/**'
+              - '!scripts/**'
+              - '!zombienet/**'
+
+  clippy:
+    needs: changes
+    # Skipped jobs count as passing required checks. Run these even when the changes job fails or is skipped.
+    if: &code ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - &rust-cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - &protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc
+      # bindgen links libclang. Only the dev package has the unversioned .so.
+      - &libclang
+        name: Install libclang-dev
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - name: Run clippy
+        run: SKIP_WASM_BUILD=1 cargo clippy --all-targets --locked --workspace --quiet -- -D warnings
+        timeout-minutes: 30
+      - name: Run clippy (runtime-benchmarks)
+        run: SKIP_WASM_BUILD=1 SKIP_PALLET_REVIVE_FIXTURES=1 cargo clippy --all-targets --locked --workspace --features runtime-benchmarks --quiet -- -D warnings
+        timeout-minutes: 30
+
+  test:
+    needs: changes
+    if: *code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - *rust-cache
+      - *protoc
+      - *libclang
+      - name: Run tests
+        run: SKIP_WASM_BUILD=1 cargo test --workspace --locked
+        timeout-minutes: 30
+      - name: Run tests (runtime-benchmarks)
+        run: SKIP_WASM_BUILD=1 SKIP_PALLET_REVIVE_FIXTURES=1 cargo test --workspace --locked --features runtime-benchmarks
+        timeout-minutes: 30
+
+  weights:
+    needs: changes
+    if: *code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject hand written weights
+        run: |
+          if grep -rn 'pallet::weight(Weight::' pallets/ runtime/src/; then
+            echo "::error::dispatchables must bill through T::WeightInfo. Regenerate with .maintain/run-benchmarks.sh"
+            exit 1
+          fi
+
+  runtime-wasm:
+    needs: changes
+    if: *code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - *rust-cache
+      - *protoc
+      - name: Build runtime wasm (no_std)
+        run: cargo check -p numen-runtime --locked --features metadata-hash
+        timeout-minutes: 45
+
+  # Skipped matrix jobs report unexpanded names that no required check matches.
+  determinism-x86_64:
+    name: determinism (x86_64)
+    needs: changes
+    if: *code
+    runs-on: ubuntu-latest
+    steps: &determinism
+      - uses: actions/checkout@v4
+      - *rust-cache
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
+      - name: Native golden
+        run: |
+          cargo test -p obj-asteroid --test determinism --locked
+          cargo test -p obj-asteroid --test spectral --locked golden
+          cargo test -p poscan --test golden --locked
+        timeout-minutes: 15
+      - name: Add wasm target
+        run: rustup target add wasm32-wasip1
+      - name: Wasm golden (wasmtime)
+        env:
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime run --"
+        run: |
+          cargo test -p obj-asteroid --test determinism --target wasm32-wasip1 --locked
+          cargo test -p obj-asteroid --test spectral --target wasm32-wasip1 --locked golden
+          cargo test -p poscan --test golden --target wasm32-wasip1 --locked
+        timeout-minutes: 15
+
+  determinism-aarch64:
+    name: determinism (aarch64)
+    needs: changes
+    if: *code
+    runs-on: ubuntu-24.04-arm
+    steps: *determinism

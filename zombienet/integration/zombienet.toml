@@ -1,0 +1,54 @@
+[settings]
+# Generous default for any "within X seconds" assertion. PoW targets 10s per
+# block, so 1000s covers about 100 blocks at that pace.
+timeout = 1000
+provider = "native"
+
+[relaychain]
+chain = "integration"
+chain_spec_path = "integration-raw.json"
+default_command = "../../target/release/numen"
+default_args = [
+    "-l=info,sub-libp2p=warn,libp2p_swarm=warn,grandpa=debug,runtime::session=debug,pallet_session=debug",
+]
+
+# === Initial validators (run a miner each so block production stays even). ===
+
+[[relaychain.nodes]]
+  name = "alice"
+  validator = true
+  bootnode = true
+  # Forwards the Ethereum namespaces to the eth-rpc that scenario 02 starts on
+  # this port.
+  args = ["--alice", "--miner", "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", "--node-miner", "--eth-rpc", "http://127.0.0.1:8545"]
+
+[[relaychain.nodes]]
+  name = "bob"
+  validator = true
+  bootnode = true
+  args = ["--bob", "--miner", "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty", "--node-miner"]
+
+[[relaychain.nodes]]
+  name = "charlie"
+  validator = true
+  bootnode = true
+  args = ["--charlie", "--miner", "5FLSigC9HGRKVhB9FiEo4Y3koPsNmBmLJbpXg2mp1hXcS59Y", "--node-miner"]
+
+# === Standby account: not an initial validator. Mines so the txpool sees its
+# `validator.lock()` extrinsic, then joins the active set after one session
+# rotation. Used by the validator-join / validator-exit scenarios. ===
+
+[[relaychain.nodes]]
+  name = "dave"
+  validator = true
+  bootnode = true
+  args = ["--dave", "--miner", "5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy", "--node-miner"]
+
+# === Pure observer node, no mining, no validating. Used to confirm
+# block/finalized hash convergence on a node that authored nothing. ===
+
+[[relaychain.nodes]]
+  name = "eve"
+  validator = false
+  bootnode = true
+  args = ["--eve"]

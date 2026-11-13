@@ -1,0 +1,162 @@
+//! Constants the runtime publishes for off chain callers.
+//!
+//! Each one restates a value that the static metadata cannot otherwise reach.
+//! A published copy is only worth having while it still agrees with the thing
+//! it speaks for, so each gets pinned to its source here.
+
+mod common;
+
+use codec::Decode;
+use common::{new_test_ext, preset_ext};
+use frame_support::{
+	__private::metadata::{RuntimeMetadata, RuntimeMetadataPrefixed},
+	assert_ok,
+	traits::{
+		tokens::fungible::{InspectHold, Mutate},
+		EnsureOrigin, OriginTrait,
+	},
+	weights::Weight,
+};
+use numen_runtime::{
+	balances_erc20::IBalancesErc20,
+	configs::governance::{pallet_custom_origins, TracksInfo, TreasurySpender},
+	Balance, Balances, Preimage, Revive, Runtime, RuntimeHoldReason, RuntimeOrigin, UNIT,
+};
+use pallet_referenda::TracksInfo as _;
+use pallet_revive::{precompiles::alloy::sol_types::SolCall, ExecConfig, TransactionLimits};
+use sp_core::{H160, U256};
+use sp_keyring::Sr25519Keyring;
+
+const FUNDS: Balance = 10_000 * UNIT;
+
+const PREIMAGE_HOLD: RuntimeHoldReason =
+	RuntimeHoldReason::Preimage(pallet_preimage::HoldReason::Preimage);
+
+/// SCALE payload the metadata carries for one published constant.
+fn published(pallet: &str, constant: &str) -> Vec<u8> {
+	let RuntimeMetadataPrefixed(_, metadata) = new_test_ext().execute_with(Runtime::metadata);
+	let RuntimeMetadata::V14(v14) = metadata else {
+		panic!("construct_runtime hands back V14");
+	};
+	v14.pallets
+		.iter()
+		.find(|p| p.name == pallet)
+		.unwrap_or_else(|| panic!("{pallet} is in the runtime"))
+		.constants
+		.iter()
+		.find(|c| c.name == constant)
+		.unwrap_or_else(|| panic!("{pallet} publishes {constant}"))
+		.value
+		.clone()
+}
+
+fn spend_caps() -> Vec<(u16, pallet_custom_origins::Origin, Balance)> {
+	Decode::decode(&mut &published("Origins", "SpendCaps")[..])
+		.expect("SpendCaps is published as a track keyed list of origins and ceilings")
+}
+
+/// The caps exist so a caller can size a proposal without submitting it. That
+/// only holds while the published figure is the figure the origin hands out.
+#[test]
+fn every_published_cap_is_what_its_spender_origin_releases() {
+	let caps = spend_caps();
+	assert!(!caps.is_empty(), "the runtime publishes at least one spender track");
+
+	for (id, origin, cap) in caps {
+		let Ok(released) = TreasurySpender::try_origin(RuntimeOrigin::from(origin)) else {
+			panic!("the origin published for track {id} clears TreasurySpender");
+		};
+
+		assert_eq!(cap, released, "track {id}");
+	}
+}
+
+/// A cap is published under a track id so a caller can size a proposal against
+/// the track it would run on. Renumbering a track without moving its cap
+/// points the figure at somebody else's referendum.
+#[test]
+fn every_published_cap_sits_on_the_track_its_origin_dispatches_under() {
+	for (id, origin, _) in spend_caps() {
+		let caller = RuntimeOrigin::from(origin).caller().clone();
+
+		assert_eq!(TracksInfo::track_for(&caller), Ok(id));
+		assert!(TracksInfo::info(id).is_some(), "track {id}");
+	}
+}
+
+/// A wallet quotes the hold on a referendum text before anyone signs for it.
+/// Noting at two lengths tells the flat part apart from the per byte part, so a
+/// published figure that drifts from what the pallet charges cannot hide inside
+/// the sum.
+#[test]
+fn published_preimage_terms_are_what_noting_bytes_holds() {
+	let base: Balance = Decode::decode(&mut &published("Origins", "PreimageBaseDeposit")[..])
+		.expect("PreimageBaseDeposit is published as a balance");
+	let per_byte: Balance = Decode::decode(&mut &published("Origins", "PreimageByteDeposit")[..])
+		.expect("PreimageByteDeposit is published as a balance");
+
+	new_test_ext().execute_with(|| {
+		for (keyring, len) in [(Sr25519Keyring::Alice, 1usize), (Sr25519Keyring::Bob, 4_096)] {
+			let who = keyring.to_account_id();
+			Balances::set_balance(&who, FUNDS);
+
+			assert_ok!(Preimage::note_preimage(
+				RuntimeOrigin::signed(who.clone()),
+				vec![0u8; len]
+			));
+
+			assert_eq!(
+				Balances::balance_on_hold(&PREIMAGE_HOLD, &who),
+				base + per_byte * len as Balance,
+				"{len} bytes",
+			);
+		}
+	});
+}
+
+/// An external miner reads this to decide whether it speaks the protocol this
+/// chain verifies. A stale copy sends it off hashing work no block will take.
+#[test]
+fn published_protocol_is_the_one_the_runtime_verifies_against() {
+	let protocol: Vec<u8> = Decode::decode(&mut &published("Poscan", "Protocol")[..])
+		.expect("Protocol is published as bytes");
+
+	assert_eq!(protocol, poscan::POSCAN_PROTOCOL);
+}
+
+/// An indexer picks the PoW seal out of a block's digest logs by this tag, so a
+/// wrong copy makes every block look like it carries no seal at all.
+#[test]
+fn published_engine_is_the_one_the_digest_carries() {
+	let engine: [u8; 4] = Decode::decode(&mut &published("Poscan", "Engine")[..])
+		.expect("Engine is published as four bytes");
+
+	assert_eq!(engine, sp_consensus_pow::POW_ENGINE_ID);
+}
+
+/// A wallet builds its withdraw call against this address and an indexer
+/// filters it out of token listings, so the published copy has to be the
+/// address the token answers at.
+#[test]
+fn published_balances_erc20_is_where_the_token_answers() {
+	let address: H160 = Decode::decode(&mut &published("Precompiles", "BalancesErc20")[..])
+		.expect("BalancesErc20 is published as a twenty byte address");
+
+	preset_ext(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+		let output = Revive::bare_call(
+			RuntimeOrigin::signed(Sr25519Keyring::Alice.to_account_id()),
+			address,
+			U256::zero(),
+			TransactionLimits::WeightAndDeposit {
+				weight_limit: Weight::from_parts(500_000_000_000, 5 * 1024 * 1024),
+				deposit_limit: UNIT,
+			},
+			IBalancesErc20::nameCall {}.abi_encode(),
+			&ExecConfig::new_substrate_tx(),
+		)
+		.result
+		.expect("the call executes");
+
+		assert_eq!(IBalancesErc20::nameCall::abi_decode_returns(&output.data).unwrap(), "Numen");
+	});
+}

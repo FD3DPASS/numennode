@@ -1,0 +1,9 @@
+Description: Each PoW block credits exactly its author with one BlockReward; all nodes agree on canonical hashes and finalize the window.
+Network: ./zombienet.toml
+Creds: /tmp/zn-creds.cfg
+
+# 1. Wait for height >= 20 on alice
+# 2. wait for every node to finalize #20, then check all nodes agree on the hash of #1..#20
+# 3. reconcile miner rewards
+
+alice: js-script ./miner-reward-and-finality.js with "alice,bob,charlie,dave,20" return is 1 within 600 seconds

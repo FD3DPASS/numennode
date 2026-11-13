@@ -1,0 +1,13 @@
+name: Install macOS dependencies
+description: Installs dependencies required to compile the template on macOS
+
+runs:
+  using: "composite"
+  steps:
+    - run: |
+        rustup update
+        brew install protobuf llvm
+        echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
+        rustup target add wasm32v1-none
+        rustup component add rustfmt clippy rust-src
+      shell: sh
