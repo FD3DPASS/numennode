@@ -1,4 +1,5 @@
-name: Windows node build (experimental)
+
+name: Windows Node Build
 
 on:
   workflow_dispatch:
@@ -11,7 +12,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
 
-env:
+    env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_BUILD_OVERRIDE_OPT_LEVEL: "0"
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
@@ -22,17 +23,12 @@ env:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            mingw-w64 \
-            clang \
-            libclang-dev \
-            llvm \
-            protobuf-compiler \
-            cmake \
-            pkg-config
+            mingw-w64 clang libclang-dev llvm \
+            protobuf-compiler cmake pkg-config
 
       - name: Configure Rust
         run: |
@@ -48,7 +44,7 @@ env:
             --target x86_64-pc-windows-gnu \
             -p numen
 
-      - name: Package Windows node
+      - name: Package
         run: |
           mkdir -p dist
           cp target/x86_64-pc-windows-gnu/release/numen.exe dist/
