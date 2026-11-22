@@ -180,6 +180,25 @@ jobs:
           path: windows-build.log
           if-no-files-found: ignore
 
+      - name: Inspect and bundle Windows DLLs
+        run: |
+          EXE="target/x86_64-pc-windows-gnu/release/numen.exe"
+
+          echo "=== Windows DLL dependencies ==="
+          x86_64-w64-mingw32-objdump -p "$EXE" | grep "DLL Name:" || true
+
+          mkdir -p dist
+
+          for dll in libwinpthread-1.dll libgcc_s_seh-1.dll libstdc++-6.dll; do
+            path=$(find /usr/x86_64-w64-mingw32 /usr/lib/gcc/x86_64-w64-mingw32 -name "$dll" -type f 2>/dev/null | head -n 1)
+            if [ -n "$path" ]; then
+              cp "$path" dist/
+              echo "Bundled: $dll"
+            else
+              echo "Not found: $dll"
+            fi
+          done
+
       - name: Package Windows node
         run: |
           mkdir -p dist
