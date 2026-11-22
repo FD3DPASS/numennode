@@ -134,7 +134,34 @@ jobs:
 
           echo "LLVM Windows linker test passed"
 
+      - name: Provide missing strnlen_s for MinGW
+        run: |
+          cat > strnlen_s.c <<'EOF'
+          #include <stddef.h>
+
+          size_t strnlen_s(const char *str, size_t maxsize) {
+              size_t len = 0;
+              if (str == NULL) return 0;
+              while (len < maxsize && str[len] != '\0') {
+                  ++len;
+              }
+              return len;
+          }
+          EOF
+
+          x86_64-w64-mingw32-gcc -c \
+            strnlen_s.c \
+            -o strnlen_s.o
+
+          x86_64-w64-mingw32-ar rcs \
+            libnumen_compat.a \
+            strnlen_s.o
+
+          echo "NUMEN_COMPAT_LIB=$PWD" >> "$GITHUB_ENV"
+
       - name: Build Windows executable
+        env:
+          RUSTFLAGS: "-L native=${{ env.NUMEN_COMPAT_LIB }} -l static=numen_compat"
         run: |
           set -o pipefail
 
