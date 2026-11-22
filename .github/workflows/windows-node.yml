@@ -20,7 +20,7 @@ jobs:
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
 
       CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
-      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld -C link-arg=-Wl,--verbose"
 
       PKG_CONFIG_ALLOW_CROSS: "1"
       CXXFLAGS_x86_64_pc_windows_gnu: "-include mutex -include thread"
